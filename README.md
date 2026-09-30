@@ -118,7 +118,7 @@ Use **`/ptn status`** during or after a test to print a local chat report:
   no rival, client-restricted data, invalid data, API failure, combat filter,
   unavailable frame or hidden health bar.
 - A unit token and API name where relevant, such as
-  `[party1/UnitDetailedThreatSituation]`. `[ANCHOR_FALLBACK]` means the display
+  `[party1/UnitDetailedThreatSituation.rawThreat]`. `[ANCHOR_FALLBACK]` means the display
   uses direct anchoring because exact nameplate coordinates were unavailable.
 
 If a death or filter event replaces a combat result, the previous combat result
@@ -132,6 +132,14 @@ If no number appears, run `/ptn status` after testing with debug enabled and
 include its output in a bug report. Zero tracked plates points to frame setup;
 zero threat events during a fight points to event delivery; a restricted-data
 reason identifies a client limitation rather than a display error.
+
+Since version 1.0.2, a readable `rawThreat` value is used even if the API's aggro
+status is protected, because that status is not needed for the subtraction.
+A restricted-data report ending in `.rawThreat` specifically means that the
+number needed for the calculation is protected. In that situation this addon
+cannot calculate the threat difference, and solo debug does not remove that
+restriction. A 1.0.1 report without the field suffix could mean that either the
+status or the numeric threat was protected.
 
 ## Performance and compatibility
 
@@ -206,4 +214,4 @@ python scripts/package.py
 
 The tests use Lupa's **Lua 5.1** runtime and load the same files as the game
 client, including the settings panel. The packaging script creates
-`dist/PlateThreatNumber-1.0.1.zip`, containing only the addon distribution files.
+`dist/PlateThreatNumber-1.0.2.zip`, containing only the addon distribution files.

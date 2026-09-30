@@ -11,7 +11,7 @@ local levelKeys = { "LevelFrame", "levelFrame", "level", "PlayerLevelDiffFrame" 
 local solo = false
 local diagnostics, diagnosticOrder = {}, {}
 local threatEvents, refreshes = 0, 0
-addon.version = "1.0.1"
+addon.version = "1.0.2"
 
 -- Bounded, local diagnostics. Store only our own reason codes and public tokens;
 -- never stringify, compare or log a secret value or an API error payload.

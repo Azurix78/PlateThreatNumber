@@ -23,10 +23,14 @@ end
 function addon.ReadThreat(unit, enemy)
     local ok, _, status, _, _, value = pcall(UnitDetailedThreatSituation, unit, enemy)
     if not ok then return nil, "unknown", "ERROR" end
-    if addon.IsSecret(status) or addon.IsSecret(value) then return nil, "unknown", "SECRET" end
-    if status == nil and value == nil then return nil, "absent", "NO_THREAT" end
-    if not addon.IsNumber(status) or not addon.IsNumber(value) or value < 0 then
-        return nil, "unknown", "INVALID"
+    -- Only rawThreat participates in the calculation. A protected aggro status
+    -- must not veto an otherwise readable number. Check secrecy before using it.
+    if addon.IsSecret(value) then return nil, "unknown", "SECRET", "rawThreat" end
+    if value == nil and not addon.IsSecret(status) and status == nil then
+        return nil, "absent", "NO_THREAT", "rawThreat"
+    end
+    if not addon.IsNumber(value) or value < 0 then
+        return nil, "unknown", "INVALID", "rawThreat"
     end
     return value, "known"
 end
@@ -50,8 +54,10 @@ function addon.CalculateDelta(enemy, competitors, allowSolo)
     reason = Check(UnitAffectingCombat, true, enemy)
     if reason then return nil, reason, "UnitAffectingCombat" end
 
-    local own, state, why = addon.ReadThreat("player", enemy)
-    if state ~= "known" then return nil, why, "player/UnitDetailedThreatSituation" end
+    local own, state, why, field = addon.ReadThreat("player", enemy)
+    if state ~= "known" then
+        return nil, why, "player/UnitDetailedThreatSituation" .. (field and "." .. field or "")
+    end
     local highest
     for i = 1, #competitors do
         local unit = competitors[i]
@@ -66,8 +72,11 @@ function addon.CalculateDelta(enemy, competitors, allowSolo)
                 if dead == nil then return nil, deadReason, unit .. "/UnitIsDeadOrGhost" end
                 if connected == nil then return nil, connectedReason, unit .. "/UnitIsConnected" end
                 if not dead and connected then
-                    local value, otherState, otherReason = addon.ReadThreat(unit, enemy)
-                    if otherState == "unknown" then return nil, otherReason, unit .. "/UnitDetailedThreatSituation" end
+                    local value, otherState, otherReason, otherField = addon.ReadThreat(unit, enemy)
+                    if otherState == "unknown" then
+                        return nil, otherReason, unit .. "/UnitDetailedThreatSituation"
+                            .. (otherField and "." .. otherField or "")
+                    end
                     if value and value > 0 and (not highest or value > highest) then
                         highest = value
                     end

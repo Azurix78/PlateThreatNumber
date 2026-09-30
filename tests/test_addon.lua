@@ -262,8 +262,8 @@ test("rejects unrelated enemies before querying competitors", function()
 end)
 test("secret, invalid, missing and failing values erase old numbers", function()
     local f = fixture()
-    for _, value in ipairs({ secretValue, "error", -1, math.huge, 0/0, { status = secretValue, value = 1000 },
-        { status = 0 }, { value = 1000 } }) do
+    for _, value in ipairs({ secretValue, "error", -1, math.huge, 0/0,
+        { status = 0 }, { status = secretValue }, { status = 0, value = "1000" } }) do
         threat.nameplate1.party1 = value
         event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2); hidden(f)
         threat.nameplate1.party1 = 1000
@@ -273,6 +273,31 @@ test("secret, invalid, missing and failing values erase old numbers", function()
     event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2); hidden(f)
     threat.nameplate1.player = 1116; data.nameplate1.combat = secretValue; calls = {}
     event("UNIT_FLAGS", "nameplate1"); advance(0.2); hidden(f); eq(#calls, 0)
+end)
+
+test("readable raw threat works even when aggro status is protected or absent", function()
+    local f = fixture()
+    threat.nameplate1.player = { status = secretValue, value = 1116 }
+    threat.nameplate1.party1 = { status = secretValue, value = 1000 }
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    eq(textOf(f).text, "+116")
+    threat.nameplate1.party1 = { value = 1200 }
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    eq(textOf(f).text, "-84")
+end)
+
+test("raw threat restrictions are identified precisely for player and competitors", function()
+    fixture()
+    threat.nameplate1.player = secretValue
+    local delta, reason, detail = addon.CalculateDelta("nameplate1", { "party1" })
+    eq(delta, nil); eq(reason, "SECRET"); eq(detail, "player/UnitDetailedThreatSituation.rawThreat")
+    threat.nameplate1.player = { status = secretValue, value = 1116 }
+    threat.nameplate1.party1 = { status = 0, value = secretValue }
+    delta, reason, detail = addon.CalculateDelta("nameplate1", { "party1" })
+    eq(delta, nil); eq(reason, "SECRET"); eq(detail, "party1/UnitDetailedThreatSituation.rawThreat")
+    threat.nameplate1.party1 = { status = secretValue }
+    delta, reason = addon.CalculateDelta("nameplate1", { "party1" }, true)
+    eq(delta, nil); eq(reason, "INVALID") -- Missing data is not an absent rival.
 end)
 test("raid player alias is excluded and pets join the roster", function()
     reset(); raid = true; groupSize = 2
@@ -371,7 +396,7 @@ test("all locales contain every text, unknown locale falls back to English", fun
         local count = 0
         for k, v in pairs(localized.L) do assert(type(v) == "string" and #v > 0, code .. ":" .. k); count = count + 1 end
         eq(count, 27)
-        local status = string.format(localized.L.DEBUG_STATUS, "1.0.1", "true", "false", "true", 1, 2, 3, 4)
+        local status = string.format(localized.L.DEBUG_STATUS, "1.0.2", "true", "false", "true", 1, 2, 3, 4)
         assert(#status > 0)
         if code == "unknown" then assert(localized.L.DESCRIPTION:find("Shows your threat", 1, true)) end
     end
