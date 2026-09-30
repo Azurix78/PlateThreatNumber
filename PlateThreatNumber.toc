@@ -1,0 +1,24 @@
+## Interface: 16001
+## Title: PlateThreatNumber
+## Notes: Displays your threat lead or deficit beside enemy nameplates.
+## Notes-enUS: Displays your threat lead or deficit beside enemy nameplates.
+## Notes-enGB: Displays your threat lead or deficit beside enemy nameplates.
+## Notes-frFR: Affiche votre avance ou retard de menace à côté des barres de nom ennemies.
+## Notes-deDE: Zeigt euren Bedrohungsvorsprung oder -rückstand neben gegnerischen Namensplaketten.
+## Notes-esES: Muestra tu ventaja o desventaja de amenaza junto a las placas de nombre enemigas.
+## Notes-esMX: Muestra tu ventaja o desventaja de amenaza junto a las placas de nombre enemigas.
+## Notes-itIT: Mostra il tuo vantaggio o svantaggio di minaccia accanto alle barre dei nomi nemici.
+## Notes-ptBR: Exibe sua vantagem ou desvantagem de ameaça ao lado das placas de nome inimigas.
+## Notes-ruRU: Показывает разницу угрозы рядом с индикаторами здоровья противников.
+## Notes-koKR: 적 이름표 옆에 자신의 위협 수준 차이를 표시합니다.
+## Notes-zhCN: 在敌方姓名板旁显示你的仇恨领先或落后数值。
+## Notes-zhTW: 在敵方名條旁顯示你的仇恨領先或落後數值。
+## Author: PlateThreatNumber
+## Version: 1.0.0
+## SavedVariables: PlateThreatNumberDB
+## SavedVariablesPerCharacter: PlateThreatNumberCharDB
+
+Locales.lua
+Threat.lua
+Core.lua
+Options.lua
