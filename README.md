@@ -1,133 +1,133 @@
 # PlateThreatNumber
 
-Addon autonome pour **WoW Forever**, interface **16001**. Affiche à droite des
-nameplates Blizzard votre avance ou votre retard de menace par rapport au
-meilleur autre participant de votre groupe ou raid, familiers compris.
+A standalone addon for **WoW Forever**, interface **16001**. Displays your threat
+lead or deficit to the right of Blizzard nameplates, compared with the highest
+threat of another party or raid member, including pets.
 
 ## Installation
 
-1. Fermez WoW.
-2. Extrayez l’archive de distribution dans :
+1. Close WoW.
+2. Extract the distribution ZIP into:
    `World of Warcraft/_classic_beta_/Interface/AddOns/`.
-3. Vérifiez la structure :
+3. Check that the folder structure is:
    `Interface/AddOns/PlateThreatNumber/PlateThreatNumber.toc`.
-4. Activez **PlateThreatNumber** dans la liste des addons et connectez-vous.
-5. Entrez **`/ptn`** pour ouvrir les réglages natifs du jeu.
+4. Enable **PlateThreatNumber** in the addon list and log in.
+5. Type **`/ptn`** to open the native game settings panel.
 
-Pour installer depuis les sources, copiez les fichiers `.lua`, le fichier `.toc`
-et ce README dans le dossier `PlateThreatNumber`. Les dossiers `tests`, `scripts`,
-`.tools` et `dist` ne sont pas nécessaires en jeu. Aucune bibliothèque externe.
-L’addon ne change pas les options du jeu : les nameplates ennemies doivent déjà
-être activées.
+To install from source, copy the `.lua` files, the `.toc` file and this README
+into the `PlateThreatNumber` folder. The `tests`, `scripts`, `.tools` and `dist`
+folders are not needed in game. No external addon libraries are required.
+The addon does not change game settings: enemy nameplates must already be enabled.
 
-## Affichage
+## Display
 
-`Écart = votre rawThreat − le plus grand rawThreat des autres participants`
+`Difference = your rawThreat - the highest rawThreat of another participant`
 
-Exemple : `1116 − 1000 = +116`. Les valeurs sont utilisées dans l’unité native de
-l’API, sans division par 100 et sans conversion en pourcentage. L’écart est
-arrondi à l’entier le plus proche ; les demi-entiers sont arrondis en s’éloignant
-de zéro. Le signe et la couleur suivent cet entier affiché.
+Example: `1116 - 1000 = +116`. Values use the API's native units, without dividing
+by 100 or converting to a percentage. The difference is rounded to the nearest
+integer, with halfway values rounded away from zero. The sign and color follow
+the displayed integer.
 
-| Écart affiché | Tank | DPS / soigneur |
+| Displayed difference | Tank | DPS / healer |
 | --- | --- | --- |
-| Positif | Vert | Rouge |
-| Nul ou négatif | Rouge | Vert |
+| Positive | Green | Red |
+| Zero or negative | Red | Green |
 
-- Le joueur doit être en combat, vivant et présent dans la table de menace d’un
-  PNJ vivant, attaquable et en combat dont la nameplate est visible.
-- Les concurrents sont les autres membres du groupe/raid et leurs familiers,
-  y compris votre propre familier. Les joueurs extérieurs au groupe et les
-  invocations sans identifiant de familier accessible ne sont pas recensés.
-- Sans concurrent vivant et connecté ayant une menace strictement positive,
-  rien ne s’affiche. En solo, un familier peut donc permettre l’affichage.
-- La menace du familier n’est pas fusionnée avec celle de son propriétaire.
-- L’avance brute n’est pas une garantie de tenir l’aggro : les seuils de reprise,
-  provocations et mécaniques particulières ne sont pas représentés.
-- Une valeur protégée, invalide ou une erreur de lecture masque le nombre. Une
-  absence de participation renvoyée par l’API exclut seulement ce concurrent.
-  Une donnée protégée d’un concurrent ne permet pas de supposer sa menace nulle.
+- You must be alive, in combat and present on the threat table of a living,
+  attackable NPC that is in combat and has a visible nameplate.
+- Other participants are party or raid members and their pets, including your
+  own pet. Players outside your group and summons without an accessible pet
+  unit token are not tracked.
+- Nothing is displayed unless another living, connected participant has
+  strictly positive threat. Your own pet can therefore enable the display
+  while playing solo.
+- Pet threat is not combined with its owner's threat.
+- A raw threat lead does not guarantee that you hold aggro: aggro thresholds,
+  taunts and special encounter mechanics are not represented.
+- A restricted or invalid value, or a read error, hides the number. If the API
+  reports no participation for a particular unit, only that unit is excluded.
+  Restricted threat data is never treated as zero threat.
 
-## Réglages
+## Settings
 
-`/ptn` ouvre **Options → AddOns → PlateThreatNumber**.
+`/ptn` opens **Options > AddOns > PlateThreatNumber**.
 
-| Réglage | Valeur initiale |
+| Setting | Default |
 | --- | --- |
-| Activation | Activé |
-| Rôle | Automatique |
-| Taille du texte | 16 |
-| Décalage horizontal / vertical | 0 / 0 |
+| Enabled | On |
+| Role | Automatic |
+| Text size | 16 |
+| Horizontal / vertical offset | 0 / 0 |
 
-En mode automatique, le rôle déclaré dans le groupe est utilisé. Sans rôle
-déclaré, les couleurs DPS / soigneur s’appliquent. Vous pouvez forcer **Tank** ou
-**DPS / soigneur**. Le rôle est enregistré par personnage ; les autres réglages
-sont partagés entre les personnages. Le texte utilise la police native avec
-contour et une marge initiale de 8 pixels après le bord droit de la plaque et
-son indicateur de niveau. Les décalages sont ajoutés à cette marge.
+Automatic mode uses your assigned group role. If no role is assigned, it uses
+the DPS / healer colors. You can override this with **Tank** or **DPS / healer**.
+The role is saved per character; other settings are shared across characters.
+The text uses the native font with an outline and an initial 8-pixel gap beyond
+the right edge of the nameplate and its level indicator. Position offsets are
+added to this gap.
 
-Locales : anglais US/GB, français, allemand, espagnol ES/MX, italien, portugais
-BR, russe, coréen, chinois simplifié et traditionnel. Repli anglais pour une
-locale inconnue.
+Supported locales: English (US/GB), French, German, Spanish (ES/MX), Italian,
+Brazilian Portuguese, Russian, Korean, Simplified Chinese and Traditional
+Chinese. Unknown locales fall back to English.
 
-## Performances et compatibilité
+## Performance and compatibility
 
-Le suivi des plaques est événementiel. Les événements de menace regroupent les
-actualisations sur 200 ms. Seules les plaques invalidées sont recalculées ; un
-changement de groupe ou un événement de membre sans ennemi identifié peut
-invalider toutes les plaques visibles. Les changements de vie ordinaires ne
-déclenchent pas de lecture de menace ; les morts invalident l’affichage.
+Nameplate tracking is event-driven. Threat events batch updates over 200 ms.
+Only nameplates marked for refresh are recalculated; a roster change or a member
+event that does not identify an enemy may mark all visible nameplates for
+refresh. Ordinary health changes do not trigger threat reads; deaths trigger
+a display update.
 
-Aucune lecture de menace hors combat ou lorsque l’addon est désactivé. Aucun
-`OnUpdate`, journal de combat, échange réseau ou parcours des unités du monde.
-Le minuteur ponctuel est annulé à la sortie du combat. Les éléments de texte
-sont réutilisés lors du recyclage des nameplates.
+No threat values are read outside combat or while the addon is disabled. There
+is no `OnUpdate` handler, combat log processing, addon network messaging or
+world-wide unit scanning. The one-shot timer is cancelled when combat ends.
+Text elements are reused when nameplates are recycled.
 
-L’addon ajoute son propre texte et utilise des hooks après les fonctions
-Blizzard. Il ne modifie ni les noms, ni les couleurs des noms, ni les icônes de
-faction : il est conçu pour coexister avec **PlateFaction**. Les remplacements
-complets de nameplates ne sont pas pris en charge dans cette version.
+The addon adds its own text and runs hooks after Blizzard functions. It does
+not modify names, name colors or faction icons, and is designed to coexist with
+**PlateFaction**. Full nameplate replacement addons are not supported in this
+version.
 
-## État des vérifications
+## Validation status
 
-- Installation locale identifiée pendant la préparation : **1.60.1.70124**.
-- Un test utilisateur de `UnitDetailedThreatSituation("player", "target")` a
-  renvoyé une valeur numérique. Cela ne prouve pas l’accès aux autres joueurs
-  ni aux plaques non ciblées dans tous les types de combat.
-- Tests automatisés sous Lua 5.1 avec API WoW simulées : calculs, couleurs,
-  filtrage, restrictions, événements, recyclage, réglages et traductions.
-- **Affichage réel, accès aux menaces de groupe en donjon et coexistence visuelle
-  avec PlateFaction : à valider en jeu.** Les tests simulés ne valident pas les
-  restrictions de sécurité, le rendu ou les événements d’un client réel.
+- Local client build identified during development: **1.60.1.70124**.
+- A user test of `UnitDetailedThreatSituation("player", "target")` returned a
+  numeric value. This does not establish access to other players' threat or
+  untargeted nameplates in every combat context.
+- Automated Lua 5.1 tests with simulated WoW APIs cover calculations, colors,
+  filtering, restrictions, events, frame reuse, settings and translations.
+- **Live rendering, group threat access in dungeons and visual coexistence with
+  PlateFaction still require in-game validation.** Simulated tests cannot
+  validate a real client's security restrictions, rendering or event behavior.
 
-### Vérification en jeu
+### In-game verification
 
-1. Avec PlateFaction activé, ouvrez `/ptn` et vérifiez les textes et les réglages.
-2. Hors combat : aucun nombre. En solo sans familier : aucun nombre.
-3. En groupe, attaquez un ennemi à deux : testez une avance, un retard, puis un
-   changement de rôle manuel. Vérifiez les couleurs du tableau ci-dessus.
-4. Combattez plusieurs ennemis : vérifiez les plaques ciblées et non ciblées,
-   ainsi qu’un ennemi voisin combattant seulement un autre groupe.
-5. Faites prendre l’aggro à un familier, puis retirez-le ; testez une mort,
-   un départ du groupe et un changement de rôle de groupe.
-6. Éloignez-vous puis revenez pour recycler les plaques : aucun ancien nombre
-   ne doit apparaître sur une autre unité. Vérifiez l’espacement après le niveau
-   et l’absence de chevauchement avec PlateFaction.
-7. Répétez en donjon et, si possible, en raid. Les valeurs protégées doivent
-   faire disparaître le nombre sans produire d’erreur Lua.
-8. Sortez du combat : disparition immédiate. Faites `/reload`, puis reconnectez
-   le personnage pour contrôler la persistance des réglages et l’absence
-   d’erreurs dans BugSack si cet addon est activé.
+1. With PlateFaction enabled, open `/ptn` and check the labels and settings.
+2. Outside combat: no number. Solo without a pet: no number.
+3. In a group, attack an enemy with another player. Test a threat lead, a deficit
+   and a manual role change. Check the colors against the table above.
+4. Fight multiple enemies. Check targeted and untargeted nameplates, as well as
+   a nearby enemy fighting only another group.
+5. Let a pet take aggro, then dismiss it. Test a death, a member leaving the
+   group and a change to your assigned group role.
+6. Move away and return to recycle nameplates. No old number should appear on
+   a different unit. Check spacing after the level indicator and ensure the
+   text does not overlap PlateFaction's display.
+7. Repeat in a dungeon and, if possible, a raid. Restricted values should hide
+   the number without causing Lua errors.
+8. Leave combat: the number should disappear immediately. Use `/reload`, then
+   log out and back in to check settings persistence. Check BugSack for errors
+   if that addon is enabled.
 
-Diagnostic facultatif sur votre cible pendant le combat :
+Optional diagnostic command for your selected target during combat:
 
 ```lua
 /run local _,_,_,_,v=UnitDetailedThreatSituation("player","target"); if issecretvalue and issecretvalue(v) then print("PTN: secret") else print("PTN:",type(v),v) end
 ```
 
-## Développement
+## Development
 
-Python et le paquet de test `lupa` sont nécessaires seulement pour les tests :
+Python and the `lupa` package are required only for running the tests:
 
 ```text
 python -m pip install --target .tools/lua lupa==2.8
@@ -135,17 +135,6 @@ python tests/run.py
 python scripts/package.py
 ```
 
-Les tests utilisent le moteur **Lua 5.1** de Lupa et chargent les mêmes fichiers
-que le client, y compris le panneau de réglages. Le script de distribution crée
-`dist/PlateThreatNumber-1.0.0.zip` avec uniquement les fichiers utiles à l’addon.
-
-## English quick start
-
-Extract the release ZIP into `_classic_beta_/Interface/AddOns/`, preserving the
-`PlateThreatNumber` folder. Enable the addon, enable enemy nameplates, then use
-`/ptn` for localized settings. It displays your raw threat minus the highest raw
-threat of another group/raid member or pet. No rival with positive threat means
-no number. Tank: positive green, zero/negative red; other roles: reversed.
-Automatic mode uses the assigned group role, defaulting to non-tank. The role
-override is saved per character. Restricted or unavailable data hides the text.
-Live group/dungeon behavior and visual coexistence still require in-game testing.
+The tests use Lupa's **Lua 5.1** runtime and load the same files as the game
+client, including the settings panel. The packaging script creates
+`dist/PlateThreatNumber-1.0.0.zip`, containing only the addon distribution files.
