@@ -19,6 +19,31 @@ into the `PlateThreatNumber` folder. The `tests`, `scripts`, `.tools` and `dist`
 folders are not needed in game. No external addon libraries are required.
 The addon does not change game settings: enemy nameplates must already be enabled.
 
+### One-click deployment on Windows
+
+Double-click **`Deploy.cmd`** in the project folder to deploy the current source
+files to:
+
+```text
+C:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns\PlateThreatNumber
+```
+
+The launcher works regardless of your current working directory and keeps its
+window open so you can see the result. If Windows denies write access,
+right-click `Deploy.cmd` and select **Run as administrator**.
+
+Deployment copies only the TOC, README and files listed in the TOC. It overwrites
+those addon files without deleting other files or touching saved settings.
+Development tools, tests and ZIP archives are excluded. Restart WoW after the
+first installation; use `/reload` after updating an already loaded addon.
+
+To preview deployment or use a different AddOns folder, run PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -WhatIf
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -AddOnsPath 'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns'
+```
+
 ## Display
 
 `Difference = your rawThreat - the highest rawThreat of another participant`
