@@ -80,6 +80,7 @@ the displayed integer.
 | Setting | Default |
 | --- | --- |
 | Enabled | On |
+| Debug / solo test | Off |
 | Role | Automatic |
 | Text size | 16 |
 | Horizontal / vertical offset | 0 / 0 |
@@ -94,6 +95,43 @@ added to this gap.
 Supported locales: English (US/GB), French, German, Spanish (ES/MX), Italian,
 Brazilian Portuguese, Russian, Korean, Simplified Chinese and Traditional
 Chinese. Unknown locales fall back to English.
+
+## Debugging and solo testing
+
+Enable **Debug / solo test** in `/ptn`, or type `/ptn debug on`.
+Fight an enemy while you are not in a party or raid. If you have a readable
+threat entry and no rival has positive threat, the addon shows your own threat
+with an asterisk, for example **`+116*`**. With a pet or group rival, the normal
+threat difference is used. The asterisk is a diagnostic indicator, not an aggro
+margin against another participant.
+
+Debug mode still requires combat and an eligible enemy. It does not bypass
+restricted data, invent threat values or read threat outside combat. Use
+`/ptn debug off` to restore normal behavior; `/ptn debug` toggles the option.
+The setting is saved and is off by default.
+
+Use **`/ptn status`** during or after a test to print a local chat report:
+
+- Version, enabled/combat/debug flags, visible and tracked nameplate counts,
+  received threat events and refresh counts since debug was enabled or reloaded.
+- The last display or blocking reason for each tracked token: no player threat,
+  no rival, client-restricted data, invalid data, API failure, combat filter,
+  unavailable frame or hidden health bar.
+- A unit token and API name where relevant, such as
+  `[party1/UnitDetailedThreatSituation]`. `[ANCHOR_FALLBACK]` means the display
+  uses direct anchoring because exact nameplate coordinates were unavailable.
+
+If a death or filter event replaces a combat result, the previous combat result
+is also included. Results remain available after combat and nameplate removal.
+Only the latest 40 nameplate tokens are kept in memory; a reused token starts a
+new record. Turning debug off or reloading clears the report. The command reads
+recorded results and does not perform extra threat scans. It never logs secret
+values, raw API error messages or player names, and does not broadcast anything.
+
+If no number appears, run `/ptn status` after testing with debug enabled and
+include its output in a bug report. Zero tracked plates points to frame setup;
+zero threat events during a fight points to event delivery; a restricted-data
+reason identifies a client limitation rather than a display error.
 
 ## Performance and compatibility
 
@@ -113,6 +151,11 @@ not modify names, name colors or faction icons, and is designed to coexist with
 **PlateFaction**. Full nameplate replacement addons are not supported in this
 version.
 
+Version 1.0.1 adds a direct-anchor fallback when exact frame coordinates are
+unavailable, and retries tracking when Blizzard finishes assigning a nameplate
+unit. These address reproducible suppression cases in the simulated tests;
+they do not establish which condition caused a particular live dungeon failure.
+
 ## Validation status
 
 - Local client build identified during development: **1.60.1.70124**.
@@ -128,7 +171,8 @@ version.
 ### In-game verification
 
 1. With PlateFaction enabled, open `/ptn` and check the labels and settings.
-2. Outside combat: no number. Solo without a pet: no number.
+2. Outside combat: no number. Solo without a pet: no number with debug disabled;
+   with debug enabled, readable personal threat should appear with `*` in combat.
 3. In a group, attack an enemy with another player. Test a threat lead, a deficit
    and a manual role change. Check the colors against the table above.
 4. Fight multiple enemies. Check targeted and untargeted nameplates, as well as
@@ -162,4 +206,4 @@ python scripts/package.py
 
 The tests use Lupa's **Lua 5.1** runtime and load the same files as the game
 client, including the settings panel. The packaging script creates
-`dist/PlateThreatNumber-1.0.0.zip`, containing only the addon distribution files.
+`dist/PlateThreatNumber-1.0.1.zip`, containing only the addon distribution files.

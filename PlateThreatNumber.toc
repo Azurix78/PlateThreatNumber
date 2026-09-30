@@ -14,7 +14,7 @@
 ## Notes-zhCN: 在敌方姓名板旁显示你的仇恨领先或落后数值。
 ## Notes-zhTW: 在敵方名條旁顯示你的仇恨領先或落後數值。
 ## Author: PlateThreatNumber
-## Version: 1.0.0
+## Version: 1.0.1
 ## SavedVariables: PlateThreatNumberDB
 ## SavedVariablesPerCharacter: PlateThreatNumberCharDB
 

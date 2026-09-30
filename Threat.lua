@@ -12,50 +12,62 @@ end
 -- Nil means that the client cannot establish the result. Never branch on secrets.
 function addon.ReadBoolean(api, ...)
     local ok, value = pcall(api, ...)
-    if ok and not addon.IsSecret(value) and type(value) == "boolean" then
-        return value
-    end
+    if not ok then return nil, "ERROR" end
+    if addon.IsSecret(value) then return nil, "SECRET" end
+    if type(value) ~= "boolean" then return nil, "INVALID" end
+    return value
 end
 
 -- Distinguish absence from restricted/invalid data. An unknown competitor must
 -- not be silently excluded, as that could turn a deficit into a false lead.
 function addon.ReadThreat(unit, enemy)
     local ok, _, status, _, _, value = pcall(UnitDetailedThreatSituation, unit, enemy)
-    if not ok or addon.IsSecret(status) or addon.IsSecret(value) then
-        return nil, "unknown"
-    end
-    if status == nil and value == nil then return nil, "absent" end
+    if not ok then return nil, "unknown", "ERROR" end
+    if addon.IsSecret(status) or addon.IsSecret(value) then return nil, "unknown", "SECRET" end
+    if status == nil and value == nil then return nil, "absent", "NO_THREAT" end
     if not addon.IsNumber(status) or not addon.IsNumber(value) or value < 0 then
-        return nil, "unknown"
+        return nil, "unknown", "INVALID"
     end
     return value, "known"
 end
 
-function addon.CalculateDelta(enemy, competitors)
-    if addon.ReadBoolean(UnitIsDeadOrGhost, "player") ~= false
-        or addon.ReadBoolean(UnitExists, enemy) ~= true
-        or addon.ReadBoolean(UnitIsPlayer, enemy) ~= false
-        or addon.ReadBoolean(UnitCanAttack, "player", enemy) ~= true
-        or addon.ReadBoolean(UnitIsDeadOrGhost, enemy) ~= false
-        or addon.ReadBoolean(UnitAffectingCombat, enemy) ~= true then return end
+local function Check(api, expected, ...)
+    local value, reason = addon.ReadBoolean(api, ...)
+    if value ~= expected then return reason or "FILTERED" end
+end
 
-    local own, state = addon.ReadThreat("player", enemy)
-    if state ~= "known" then return end
+function addon.CalculateDelta(enemy, competitors, allowSolo)
+    local reason = Check(UnitIsDeadOrGhost, false, "player")
+    if reason then return nil, reason, "player/UnitIsDeadOrGhost" end
+    reason = Check(UnitExists, true, enemy)
+    if reason then return nil, reason, "UnitExists" end
+    reason = Check(UnitIsPlayer, false, enemy)
+    if reason then return nil, reason, "UnitIsPlayer" end
+    reason = Check(UnitCanAttack, true, "player", enemy)
+    if reason then return nil, reason, "UnitCanAttack" end
+    reason = Check(UnitIsDeadOrGhost, false, enemy)
+    if reason then return nil, reason, "UnitIsDeadOrGhost" end
+    reason = Check(UnitAffectingCombat, true, enemy)
+    if reason then return nil, reason, "UnitAffectingCombat" end
+
+    local own, state, why = addon.ReadThreat("player", enemy)
+    if state ~= "known" then return nil, why, "player/UnitDetailedThreatSituation" end
     local highest
     for i = 1, #competitors do
         local unit = competitors[i]
-        local exists = addon.ReadBoolean(UnitExists, unit)
-        if exists == nil then return end
+        local exists, existsReason = addon.ReadBoolean(UnitExists, unit)
+        if exists == nil then return nil, existsReason, unit .. "/UnitExists" end
         if exists then
-            local isSelf = addon.ReadBoolean(UnitIsUnit, unit, "player")
-            if isSelf == nil then return end
+            local isSelf, selfReason = addon.ReadBoolean(UnitIsUnit, unit, "player")
+            if isSelf == nil then return nil, selfReason, unit .. "/UnitIsUnit" end
             if not isSelf then
-                local dead = addon.ReadBoolean(UnitIsDeadOrGhost, unit)
-                local connected = addon.ReadBoolean(UnitIsConnected, unit)
-                if dead == nil or connected == nil then return end
+                local dead, deadReason = addon.ReadBoolean(UnitIsDeadOrGhost, unit)
+                local connected, connectedReason = addon.ReadBoolean(UnitIsConnected, unit)
+                if dead == nil then return nil, deadReason, unit .. "/UnitIsDeadOrGhost" end
+                if connected == nil then return nil, connectedReason, unit .. "/UnitIsConnected" end
                 if not dead and connected then
-                    local value, otherState = addon.ReadThreat(unit, enemy)
-                    if otherState == "unknown" then return end
+                    local value, otherState, otherReason = addon.ReadThreat(unit, enemy)
+                    if otherState == "unknown" then return nil, otherReason, unit .. "/UnitDetailedThreatSituation" end
                     if value and value > 0 and (not highest or value > highest) then
                         highest = value
                     end
@@ -63,7 +75,9 @@ function addon.CalculateDelta(enemy, competitors)
             end
         end
     end
-    if highest then return own - highest end
+    if highest then return own - highest, "SHOWN" end
+    if allowSolo then return own, "SOLO" end
+    return nil, "NO_RIVAL"
 end
 
 function addon.FormatDelta(delta, tank)

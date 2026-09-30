@@ -18,7 +18,8 @@ function addon:CreateOptions()
         label:SetJustifyH("LEFT")
         rows[#rows + 1] = { kind = "label", widget = label }
     end
-    local function Check(text, choice)
+    local function Check(text, choice, key)
+        key = key or "enabled"
         local button = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
         local label = button.Text or button.text
         label:SetText(text)
@@ -27,10 +28,10 @@ function addon:CreateOptions()
         label:SetPoint("LEFT", button, "RIGHT", 2, 0)
         button:SetScript("OnClick", function()
             if choice then addon:SetOption("role", choice)
-            else addon:SetOption("enabled", not not button:GetChecked()) end
+            else addon:SetOption(key, not not button:GetChecked()) end
             panel:Sync()
         end)
-        local row = { kind = "check", widget = button, label = label, choice = choice }
+        local row = { kind = "check", widget = button, label = label, choice = choice, key = key }
         checks[#checks + 1] = row
         rows[#rows + 1] = row
     end
@@ -58,6 +59,8 @@ function addon:CreateOptions()
     Label("PlateThreatNumber", "GameFontNormalLarge")
     Label(L.DESCRIPTION)
     Check(L.ENABLED)
+    Check(L.DEBUG, nil, "debug")
+    Label(L.DEBUG_HELP)
     Label(L.ROLE, "GameFontNormal")
     Check(L.AUTO, "auto")
     Check(L.TANK, "tank")
@@ -100,7 +103,7 @@ function addon:CreateOptions()
         for _, row in ipairs(checks) do
             local checked
             if row.choice then checked = addon.charDB.role == row.choice
-            else checked = addon.db.enabled end
+            else checked = addon.db[row.key] end
             row.widget:SetChecked(checked)
         end
         for _, row in ipairs(sliders) do
@@ -116,7 +119,16 @@ function addon:CreateOptions()
     self.category = Settings.RegisterCanvasLayoutCategory(panel, "PlateThreatNumber")
     Settings.RegisterAddOnCategory(self.category)
     SLASH_PLATETHREATNUMBER1 = "/ptn"
-    SlashCmdList.PLATETHREATNUMBER = function()
-        Settings.OpenToCategory(addon.category:GetID())
+    SlashCmdList.PLATETHREATNUMBER = function(message)
+        local command = (message or ""):lower():match("^%s*(.-)%s*$")
+        if command == "debug" or command == "debug on" or command == "debug off" then
+            local enabled = command == "debug on" or (command == "debug" and not addon.db.debug)
+            addon:SetOption("debug", enabled)
+            panel:Sync()
+        elseif command == "status" then
+            addon:PrintStatus()
+        else
+            Settings.OpenToCategory(addon.category:GetID())
+        end
     end
 end

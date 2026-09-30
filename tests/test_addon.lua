@@ -1,4 +1,15 @@
 local passed = 0
+local output = {}
+local consolePrint = print
+function print(message, ...)
+    if type(message) == "string" and message:find("|cff70d5ffPlateThreatNumber|r:", 1, true) then
+        output[#output + 1] = message
+    else consolePrint(message, ...) end
+end
+local function reportContains(text)
+    for _, line in ipairs(output) do if line:find(text, 1, true) then return true end end
+    return false
+end
 local function eq(actual, expected, message)
     assert(actual == expected, (message or "values differ") .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual))
 end
@@ -165,6 +176,7 @@ local function hidden(frame)
     if t then eq(t.text, "") end
 end
 local function reset(saved, charSaved)
+    output = {}
     frames, timers, hooks, plates, data, threat, calls = {}, {}, {}, {}, {}, {}, {}
     groupSize, raid, role, locale, clock = 1, false, "NONE", "frFR", 0
     data.player, data.party1 = { id = "self", player = true }, { player = true }
@@ -307,12 +319,14 @@ test("frame reuse clears immediately and reuses one FontString", function()
     hidden(f); advance(0.2); eq(textOf(f), text); eq(text.text, "-100"); eq(#f.fontStrings, 1)
     CompactUnitFrame_SetUnit(f, nil); hidden(f)
 end)
-test("show, hide, forbidden frame and restricted positioning", function()
+test("show, hide, forbidden frame and restricted positioning fallback", function()
     local f = fixture()
     f:Hide(); hidden(f); f:Show(); advance(0.2); eq(textOf(f).text, "+116")
     f.forbidden = true; event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2); hidden(f)
     f.forbidden = false; f.healthBar.right = secretValue
-    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2); hidden(f)
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    eq(textOf(f).text, "+116"); eq(textOf(f).point[2], f.LevelFrame)
+    eq(textOf(f).point[4], 8)
 end)
 test("target alias updates the corresponding plate", function()
     local f = fixture(); data.target = { id = "nameplate1" }
@@ -356,7 +370,9 @@ test("all locales contain every text, unknown locale falls back to English", fun
         locale = code; local localized = {}; assert(loadfile("Locales.lua"))("PlateThreatNumber", localized)
         local count = 0
         for k, v in pairs(localized.L) do assert(type(v) == "string" and #v > 0, code .. ":" .. k); count = count + 1 end
-        eq(count, 10)
+        eq(count, 27)
+        local status = string.format(localized.L.DEBUG_STATUS, "1.0.1", "true", "false", "true", 1, 2, 3, 4)
+        assert(#status > 0)
         if code == "unknown" then assert(localized.L.DESCRIPTION:find("Shows your threat", 1, true)) end
     end
     -- Reject missing translated entries, even if runtime fallback would hide them.
@@ -364,6 +380,135 @@ test("all locales contain every text, unknown locale falls back to English", fun
     local instrumented = source .. "\nreturn locales, keys"
     local translations, keys = assert(loadstring(instrumented))("PlateThreatNumber", {})
     for code, values in pairs(translations) do eq(#values, #keys, code .. " key coverage") end
+end)
+
+test("solo debug is opt-in and marked; group calculations are unchanged", function()
+    reset(); groupSize = 0; event("GROUP_ROSTER_UPDATE")
+    local f = newPlate("nameplate1")
+    threat.nameplate1 = { player = 116 }
+    combat(); advance(0.2); hidden(f)
+    SlashCmdList.PLATETHREATNUMBER("debug on"); advance(0.2)
+    eq(textOf(f).text, "+116*"); eq(textOf(f).color[1], 1)
+    addon:SetOption("role", "tank"); advance(0.2); eq(textOf(f).color[2], 1)
+    SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains(addon.L.D_SOLO))
+    groupSize = 1; event("GROUP_ROSTER_UPDATE"); advance(0.2); hidden(f)
+    threat.nameplate1.party1 = 100
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    eq(textOf(f).text, "+16")
+    groupSize = 0; event("GROUP_ROSTER_UPDATE"); advance(0.2)
+    SlashCmdList.PLATETHREATNUMBER("debug off"); advance(0.2); hidden(f)
+end)
+
+test("debug preserves combat filters and never reads threat outside combat", function()
+    reset(); groupSize = 0; event("GROUP_ROSTER_UPDATE")
+    local f = newPlate("nameplate1"); threat.nameplate1 = { player = 116 }
+    SlashCmdList.PLATETHREATNUMBER("debug"); advance(1); hidden(f); eq(#calls, 0)
+    SlashCmdList.PLATETHREATNUMBER("status"); eq(#calls, 0)
+    combat(); advance(0.2); eq(textOf(f).text, "+116*")
+    data.nameplate1.combat = false
+    event("UNIT_FLAGS", "nameplate1"); advance(0.2); hidden(f)
+    SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains("UnitAffectingCombat"))
+    data.player.combat = false; event("PLAYER_REGEN_ENABLED"); calls = {}
+    SlashCmdList.PLATETHREATNUMBER("status"); advance(1); eq(#calls, 0); eq(pending(), 0)
+end)
+
+test("diagnostics identify missing player threat and no rivals", function()
+    local f = fixture(); addon:SetOption("debug", true)
+    threat.nameplate1.player = nil
+    advance(0.2); hidden(f); SlashCmdList.PLATETHREATNUMBER("status")
+    assert(reportContains(addon.L.D_NO_THREAT)); assert(reportContains("player/UnitDetailedThreatSituation"))
+    threat.nameplate1.player = 1116; threat.nameplate1.party1 = nil; output = {}
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains(addon.L.D_NO_RIVAL))
+end)
+
+test("diagnostics distinguish protected, invalid and failed API calls", function()
+    local f = fixture(); addon:SetOption("debug", true)
+    for _, row in ipairs({ { secretValue, "D_SECRET" }, { "error", "D_ERROR" }, { -1, "D_INVALID" } }) do
+        threat.nameplate1.party1 = row[1]; output = {}
+        event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2); hidden(f)
+        eq(#output, 0) -- No automatic chat spam, even when events keep firing.
+        SlashCmdList.PLATETHREATNUMBER("status")
+        assert(reportContains(addon.L[row[2]])); assert(reportContains("party1/UnitDetailedThreatSituation"))
+        assert(not reportContains("<secret>")); assert(not reportContains("unavailable"))
+    end
+    threat.nameplate1.party1 = 1000; data.nameplate1.combat = secretValue; output = {}
+    event("UNIT_FLAGS", "nameplate1"); advance(0.2)
+    SlashCmdList.PLATETHREATNUMBER("status")
+    assert(reportContains(addon.L.D_SECRET)); assert(reportContains("UnitAffectingCombat"))
+end)
+
+test("debug does not turn secret threat into a solo value", function()
+    reset(); groupSize = 0; event("GROUP_ROSTER_UPDATE")
+    local f = newPlate("nameplate1"); threat.nameplate1 = { player = secretValue }
+    addon:SetOption("debug", true); combat(); advance(0.2); hidden(f)
+    SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains(addon.L.D_SECRET))
+    threat.nameplate1.player = 116; data.pet = {}; threat.nameplate1.pet = secretValue
+    event("UNIT_PET", "player"); advance(0.2); hidden(f)
+end)
+
+test("debug report survives combat exit and nameplate removal without stale text", function()
+    local f = fixture(); addon:SetOption("debug", true); advance(0.2)
+    event("NAME_PLATE_UNIT_REMOVED", "nameplate1"); plates.nameplate1 = nil; hidden(f)
+    data.player.combat = false; event("PLAYER_REGEN_ENABLED"); calls = {}; output = {}
+    SlashCmdList.PLATETHREATNUMBER("status")
+    assert(reportContains(addon.L.D_SHOWN)); eq(#calls, 0); eq(pending(), 0)
+    addon:SetOption("debug", false); output = {}; SlashCmdList.PLATETHREATNUMBER("status")
+    assert(not reportContains(addon.L.D_SHOWN))
+end)
+
+test("enemy death preserves the useful combat diagnosis", function()
+    local f = fixture(); addon:SetOption("debug", true)
+    threat.nameplate1.party1 = secretValue
+    advance(0.2); hidden(f)
+    data.nameplate1.dead = true
+    event("UNIT_HEALTH", "nameplate1"); advance(0.2)
+    event("NAME_PLATE_UNIT_REMOVED", "nameplate1"); plates.nameplate1 = nil
+    event("PLAYER_REGEN_ENABLED"); output = {}
+    SlashCmdList.PLATETHREATNUMBER("status")
+    assert(reportContains(addon.L.D_FILTERED)); assert(reportContains(addon.L.D_SECRET))
+    assert(reportContains("party1/UnitDetailedThreatSituation"))
+    -- Reusing the same token for a new enemy must discard the old diagnosis.
+    newPlate("nameplate1"); output = {}; SlashCmdList.PLATETHREATNUMBER("status")
+    assert(not reportContains(addon.L.D_SECRET))
+end)
+
+test("diagnostics are bounded and distinguish unreadable frames and hidden health bars", function()
+    reset(); addon:SetOption("debug", true)
+    for i = 1, 60 do
+        local unit = "nameplate" .. i
+        local f = newPlate(unit)
+        f.unit = secretValue; event("NAME_PLATE_UNIT_ADDED", unit)
+        event("NAME_PLATE_UNIT_REMOVED", unit); plates[unit] = nil
+    end
+    output = {}; SlashCmdList.PLATETHREATNUMBER("status")
+    eq(#output, 41); assert(reportContains(addon.L.D_FRAME))
+    assert(not reportContains("nameplate1:"))
+    local f = newPlate("nameplate1"); threat.nameplate1 = { player = 1116, party1 = 1000 }
+    f.healthBar:Hide(); combat(); advance(0.2); hidden(f)
+    output = {}; SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains(addon.L.D_POSITION))
+end)
+
+test("nil optional geometry no longer suppresses the display", function()
+    local f = fixture(); addon:SetOption("debug", true)
+    f.ClassificationFrame = CreateFrame("Frame", nil, f)
+    f.ClassificationFrame.GetRight = function() return nil end
+    advance(0.2); eq(textOf(f).text, "+116")
+    SlashCmdList.PLATETHREATNUMBER("status"); assert(reportContains("ANCHOR_FALLBACK"))
+    f.LevelFrame:Hide(); f.level = 10 -- A scalar is not a region.
+    event("UNIT_THREAT_LIST_UPDATE", "nameplate1"); advance(0.2)
+    eq(textOf(f).point[2], f)
+end)
+
+test("early nameplate event recovers when Blizzard assigns its unit", function()
+    reset(); addon:SetOption("debug", true)
+    local p = CreateFrame("Frame"); local f = CreateFrame("Frame", nil, p)
+    p.UnitFrame = f; f.healthBar = CreateFrame("StatusBar", nil, f)
+    plates.nameplate1 = p; data.nameplate1 = { combat = true }
+    threat.nameplate1 = { player = 1116, party1 = 1000 }
+    combat(); event("NAME_PLATE_UNIT_ADDED", "nameplate1")
+    CompactUnitFrame_SetUnit(f, "nameplate1"); advance(0.2)
+    eq(textOf(f).text, "+116")
 end)
 
 print(string.format("\n%d tests passed (Lua %s).", passed, _VERSION))

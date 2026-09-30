@@ -1,15 +1,41 @@
 local addonName, addon = ...
 local secret, bool = addon.IsSecret, addon.ReadBoolean
-local defaults = { enabled = true, fontSize = 16, offsetX = 0, offsetY = 0 }
+local defaults = { enabled = true, debug = false, fontSize = 16, offsetX = 0, offsetY = 0 }
 local ranges = { fontSize = { 8, 48 }, offsetX = { -150, 150 }, offsetY = { -100, 100 } }
 local units, dirty, competitors = {}, {}, {}
 local states = setmetatable({}, { __mode = "k" })
 local events = CreateFrame("Frame")
 local timer, inCombat, tank, ready
 local Mark, MarkAll, Track
+local levelKeys = { "LevelFrame", "levelFrame", "level", "PlayerLevelDiffFrame" }
+local solo = false
+local diagnostics, diagnosticOrder = {}, {}
+local threatEvents, refreshes = 0, 0
+addon.version = "1.0.1"
+
+-- Bounded, local diagnostics. Store only our own reason codes and public tokens;
+-- never stringify, compare or log a secret value or an API error payload.
+local function Record(unit, reason, detail, reset)
+    if not ready or not addon.db.debug then return end
+    if not diagnostics[unit] then
+        if #diagnosticOrder >= 40 then
+            diagnostics[table.remove(diagnosticOrder, 1)] = nil
+        end
+        diagnosticOrder[#diagnosticOrder + 1] = unit
+        diagnostics[unit] = {}
+    end
+    local record = diagnostics[unit]
+    if reset then record.lastReason, record.lastDetail = nil, nil end
+    record.reason, record.detail = reason, detail
+    -- A death/filter event should not erase the reason that mattered in combat.
+    if reason ~= "FILTERED" and reason ~= "WAITING" and reason ~= "FRAME" then
+        record.lastReason, record.lastDetail = reason, detail
+    end
+end
 
 local function Accessible(object)
     if secret(object) or not object then return false end
+    if type(object) ~= "table" and type(object) ~= "userdata" then return false end
     return not object.IsForbidden or bool(object.IsForbidden, object) == false
 end
 
@@ -40,6 +66,7 @@ local function RebuildRoster()
     competitors[#competitors + 1] = "pet"
     local raid = IsInRaid()
     local count = raid and GetNumGroupMembers() or GetNumSubgroupMembers()
+    solo = not raid and count == 0
     for i = 1, count do
         local unit = (raid and "raid" or "party") .. i
         competitors[#competitors + 1] = unit
@@ -66,30 +93,41 @@ local function Position(state)
     if not Accessible(bar) then return false end
     local shown = bool(bar.IsShown, bar)
     if shown ~= true then return false end
-    -- Use readable geometry only. The health bar is the vertical reference;
-    -- the outermost visible level/classification region is the horizontal one.
-    local right = bar:GetRight()
-    if not addon.IsNumber(right) then return false end
-    local furthest = right
+    -- Prefer exact readable geometry, but do not require it for rendering.
+    -- Anchoring directly to a region does not need arithmetic on its coordinates.
+    local ok, right = pcall(bar.GetRight, bar)
+    local readable = ok and addon.IsNumber(right)
+    local furthest = readable and right or 0
+    local anchor = frame
+    local levelAnchor
     local function Include(region)
         if Accessible(region) and bool(region.IsShown, region) == true then
-            local edge = region:GetRight()
-            if not addon.IsNumber(edge) then return false end
-            furthest = math.max(furthest, edge)
+            local edgeOK, edge = pcall(region.GetRight, region)
+            if not edgeOK or not addon.IsNumber(edge) then readable = false
+            elseif readable then furthest = math.max(furthest, edge) end
         end
-        return true
     end
-    if not Include(frame) or not Include(frame.LevelFrame)
-        or not Include(frame.levelFrame) or not Include(frame.level)
-        or not Include(frame.ClassificationFrame)
-        or not Include(frame.PlayerLevelDiffFrame) then return false end
+    for _, key in ipairs(levelKeys) do
+        local region = frame[key]
+        if Accessible(region) and bool(region.IsShown, region) == true then
+            levelAnchor = region
+            break
+        end
+    end
+    Include(frame); Include(frame.LevelFrame); Include(frame.levelFrame)
+    Include(frame.level); Include(frame.ClassificationFrame); Include(frame.PlayerLevelDiffFrame)
+    local offset = 8 + addon.db.offsetX
+    state.anchorFallback = not readable
+    if readable then anchor, offset = bar, offset + furthest - right
+    else anchor = levelAnchor or frame end
     text:ClearAllPoints()
-    text:SetPoint("LEFT", bar, "RIGHT", furthest - right + 8 + addon.db.offsetX, addon.db.offsetY)
+    text:SetPoint("LEFT", anchor, "RIGHT", offset, addon.db.offsetY)
     text:SetFont(STANDARD_TEXT_FONT, addon.db.fontSize, "OUTLINE")
     return true
 end
 
 local function Refresh(state)
+    if addon.db.debug then refreshes = refreshes + 1 end
     local unit = state.unit
     local currentPlate = unit and C_NamePlate.GetNamePlateForUnit(unit)
     if not Active() or not unit or not Accessible(state.frame)
@@ -97,17 +135,20 @@ local function Refresh(state)
         or not Accessible(currentPlate) or currentPlate ~= state.plate
         or secret(state.frame.unit) or state.frame.unit ~= unit then
         Clear(state)
+        if unit then Record(unit, "FRAME") end
         return
     end
-    local delta = addon.CalculateDelta(unit, competitors)
+    local delta, reason, detail = addon.CalculateDelta(unit, competitors, addon.db.debug and solo)
     local value, green = addon.FormatDelta(delta, tank)
-    if not value then Clear(state); return end
+    if not value then Clear(state); Record(unit, reason, detail); return end
+    if reason == "SOLO" then value = value .. "*" end
     if not state.text then
         state.text = state.frame:CreateFontString(nil, "OVERLAY")
         state.text:SetJustifyH("LEFT")
         state.text:Hide()
     end
-    if not Position(state) then Clear(state); return end
+    if not Position(state) then Clear(state); Record(unit, "POSITION"); return end
+    Record(unit, reason, state.anchorFallback and "ANCHOR_FALLBACK" or nil)
     if value ~= state.value then state.text:SetText(value); state.value = value end
     if green ~= state.green then
         state.text:SetTextColor(green and 0 or 1, green and 1 or 0, 0)
@@ -147,9 +188,9 @@ end
 Track = function(unit)
     if not PlateToken(unit) then return end
     local plate = C_NamePlate.GetNamePlateForUnit(unit)
-    if not Accessible(plate) or not Accessible(plate.UnitFrame) then return end
+    if not Accessible(plate) or not Accessible(plate.UnitFrame) then Record(unit, "FRAME"); return end
     local frame = plate.UnitFrame
-    if secret(frame.unit) or frame.unit ~= unit then return end
+    if secret(frame.unit) or frame.unit ~= unit then Record(unit, "FRAME", "frame.unit"); return end
     local state = states[frame]
     if not state then
         state = { frame = frame, plate = plate }
@@ -162,10 +203,12 @@ Track = function(unit)
             if state.unit then Mark(state.unit) end
         end)
     end
-    if state.unit ~= unit then Detach(state) end
+    local newUnit = state.unit ~= unit
+    if newUnit then Detach(state) end
     if units[unit] and units[unit] ~= state then Detach(units[unit]) end
     state.unit, state.plate = unit, plate
     units[unit] = state
+    if newUnit or not diagnostics[unit] then Record(unit, "WAITING", nil, newUnit) end
     Mark(unit)
 end
 
@@ -181,9 +224,15 @@ function addon:SetOption(key, value)
         if value ~= "auto" and value ~= "tank" and value ~= "nontank" then return end
         self.charDB.role = value
         UpdateRole()
-    elseif key == "enabled" then
+    elseif key == "enabled" or key == "debug" then
         if type(value) ~= "boolean" then return end
-        self.db.enabled = value
+        self.db[key] = value
+        if key == "debug" then
+            wipe(diagnostics); wipe(diagnosticOrder)
+            threatEvents, refreshes = 0, 0
+            self:Message(self.L[value and "DEBUG_ON" or "DEBUG_OFF"])
+            if value then Discover() end
+        end
     elseif ranges[key] then
         if not self.IsNumber(value) then return end
         self.db[key] = math.max(ranges[key][1], math.min(ranges[key][2], math.floor(value + 0.5)))
@@ -191,6 +240,33 @@ function addon:SetOption(key, value)
         return
     end
     if not Active() then Stop() else MarkAll() end
+end
+
+function addon:Message(message)
+    print("|cff70d5ffPlateThreatNumber|r: " .. message)
+end
+
+function addon:PrintStatus()
+    -- Report recorded results; never initiate threat reads from a chat command.
+    local visible, tracked = 0, 0
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        for _ in pairs(C_NamePlate.GetNamePlates()) do visible = visible + 1 end
+    end
+    for _ in pairs(units) do tracked = tracked + 1 end
+    self:Message(string.format(self.L.DEBUG_STATUS, self.version, tostring(self.db.enabled),
+        tostring(inCombat), tostring(self.db.debug), visible, tracked, threatEvents, refreshes))
+    if not self.db.debug then self:Message(self.L.DEBUG_HELP); return end
+    if #diagnosticOrder == 0 then self:Message(self.L.D_WAITING); return end
+    for _, unit in ipairs(diagnosticOrder) do
+        local record = diagnostics[unit]
+        local line = unit .. ": " .. self.L["D_" .. record.reason]
+            .. (record.detail and " [" .. record.detail .. "]" or "")
+        if record.lastReason and record.lastReason ~= record.reason then
+            line = line .. " | " .. self.L.DEBUG_LAST .. ": " .. self.L["D_" .. record.lastReason]
+                .. (record.lastDetail and " [" .. record.lastDetail .. "]" or "")
+        end
+        self:Message(line)
+    end
 end
 
 local function Initialize()
@@ -215,10 +291,8 @@ local function Initialize()
         hooksecurefunc("CompactUnitFrame_SetUnit", function(frame, unit)
             if not Accessible(frame) then return end
             local state = states[frame]
-            if state then
-                Detach(state)
-                if PlateToken(unit) then Track(unit) end
-            end
+            if state then Detach(state) end
+            if PlateToken(unit) then Track(unit) end
         end)
     end
     Discover()
@@ -245,6 +319,9 @@ events:SetScript("OnEvent", function(_, event, unit)
         return
     end
     if not ready then return end
+    if addon.db.debug and (event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_THREAT_SITUATION_UPDATE") then
+        threatEvents = threatEvents + 1
+    end
     if event == "NAME_PLATE_UNIT_ADDED" then Track(unit)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         if not secret(unit) and units[unit] then Detach(units[unit]) end
@@ -261,6 +338,8 @@ events:SetScript("OnEvent", function(_, event, unit)
     elseif event == "PLAYER_ROLES_ASSIGNED" or event == "ROLE_CHANGED_INFORM" then
         UpdateRole(); MarkAll()
     elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then MarkAll()
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        if Active() then Discover(); MarkAll() end
     elseif event == "UNIT_HEALTH" then
         -- Health changes are frequent. Only death invalidates threat here.
         if Active() and not secret(unit) and bool(UnitIsDeadOrGhost, unit) == true then ChangedUnit(unit) end
@@ -275,4 +354,5 @@ for _, event in ipairs({
     "UNIT_THREAT_SITUATION_UPDATE", "UNIT_FLAGS", "UNIT_FACTION", "UNIT_HEALTH",
     "UNIT_CONNECTION", "GROUP_ROSTER_UPDATE", "UNIT_PET", "PLAYER_ROLES_ASSIGNED",
     "ROLE_CHANGED_INFORM", "UI_SCALE_CHANGED", "DISPLAY_SIZE_CHANGED",
+    "PLAYER_TARGET_CHANGED",
 }) do events:RegisterEvent(event) end
